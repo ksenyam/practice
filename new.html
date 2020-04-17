@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <script src='mod_min.js'></script>
+	<meta charset='utf-8'>
+	<title></title>
+
+	<style type='text/css'>
+		body, html {
+			font-family: Helvetica;
+			color: white;
+		}
+
+		canvas {
+			position: absolute;
+			pointer-events: none
+		}
+
+		p {
+			width: 300px;
+		}
+
+		.input-text {
+			font-style: italic;
+		}
+
+		.source-info {
+			font-style: italic;
+			font-size: 11px;
+			color: #aaaaaa;
+		}
+
+		/* D3 Relevant Styes */
+		svg {
+			position: absolute;
+			pointer-events: none;
+		}
+
+		circle {
+			pointer-events: all;
+		}
+
+	</style>
+</head>
+<body>
+    <div class='source-info'>this is a test</div>
+	<div class='svg-container'></div>
+	<canvas id='graph-canvas'></canvas>
+	<script type='text/javascript'>
+
+
+debugger;
+var nodes;
+
+
+debugger;
+		//Original data
+		var dataset = {
+			nodes: [
+				{category: 3, experience: 'test'},
+				{category: 0, experience: 'test'},
+				{category: 1, experience: 'test'},
+				{category: 2, experience: 'test'},
+				{category: 4, experience: 'test'},
+				{category: 4, experience: 'test'},
+				{category: 1, experience: 'test'},
+				{category: 1, experience: 'test'},
+				{category: 3, experience: 'test'},
+				{category: 3, experience: 'test'},
+				{category: 0, experience: 'test'}
+			],
+			links: [
+				{ source: 0, target: 1,},
+				{ source: 0, target: 2,},
+				{ source: 0, target: 3,},
+				{ source: 0, target: 4,},
+				{ source: 1, target: 0,},
+				{ source: 1, target: 2,},
+				{ source: 2, target: 5,},
+				{ source: 3, target: 4,},
+				{ source: 5, target: 8,},
+				{ source: 5, target: 9,},
+				{ source: 6, target: 7,}
+			]
+		};
+
+		//Width and height of the image
+		var w = 800;
+		var h = w/2;
+
+		// I don't use margins for this graph, but they are included because they are helpful for properly offsetting the canvas particles in tick() and drawParticlePathOnCanvas() below
+		let margin = { top: 0, right: 0, bottom: 0, left: 0};
+
+		let nodeRadius = 15;
+
+		var simulation = d3.forceSimulation()
+			.force('link', 
+			  d3.forceLink()
+				.id(d => 0)
+			)
+			.force('charge', 
+			  d3.forceManyBody()
+				.strength(-500)
+			  )
+			.force('center', d3.forceCenter(w / 2, h / 2))
+			.force('x', d3.forceX(w))
+			.force('y', d3.forceY(h))
+			.on('tick', ticked);
+		
+		// Colors generated from 'I want hue': http://tools.medialab.sciences-po.fr/iwanthue/
+		const colors = d3.scaleOrdinal(['#7FFFD4', '#8A2BE2', '#A52A2A', '#DEB887', '#5F9EA0', '#7FFF00', '#D2691E', '#6495ED', '#DC143C', '#B8860B', '#A9A9A9', '#A9A9A9', '#BDB76B', '#8B008B', '#556B2F', '#9932CC', '#8B0000', '#E9967A', '#8FBC8F', '#483D8B', '#2F4F4F', '#2F4F4F', '#9400D3', '#696969', '#696969', '#B22222', '#228B22', '#DCDCDC', '#DAA520', '#808080', '#ADFF2F', '#808080', '#CD5C5C', '#4B0082', '#E6E6FA', '#7CFC00', '#ADD8E6', '#E0FFFF', '#D3D3D3', '#90EE90', '#D3D3D3', '#87CEFA', '#778899', '#778899', '#B0C4DE', '#32CD32', '#800000', '#66CDAA', '#BA55D3', '#9370DB', '#3CB371', '#7B68EE', '#48D1CC', '#C71585', '#808000', '#6B8E23', '#DA70D6', '#EEE8AA', '#98FB98', '#AFEEEE', '#DB7093', '#CD853F', '#DDA0DD', '#B0E0E6', '#800080', '#663399', '#BC8F8F', '#4169E1', '#8B4513', '#2E8B57', '#A0522D', '#C0C0C0', '#87CEEB', '#6A5ACD', '#708090', '#708090', '#4682B4', '#D2B48C', '#D8BFD8', '#40E0D0', '#EE82EE', '#9ACD32']);   //CHANGE THIS FOR PARAMETERS
+		
+		let linkScale = d3.scaleLinear()
+			  .domain([0,1])
+			  .range([1,nodeRadius])
+
+		let f = d3.format('.0f');
+		
+		// Declare the context that will be used to draw the particles
+		let context = createProperResCanvas(w, h);
+
+		//Create SVG element
+		var svg = d3.select('.svg-container')
+					.append('svg')
+					.attr('x', 0)
+					.attr('y', 0)
+					.attr('width', w)
+					.attr('height', h);
+
+		// Set the link attributes for `line` and particles
+		dataset.links.forEach(link => {
+		  link.transitionDensity = 10;   //how many or often particles are sent
+		  link.width = 5;
+		});
+
+		dataset.links.forEach(link => {
+			link.freq = link.transitionDensity;
+			link.particleSize = 5;  //CHANGE THIS FOR PARAMETERS
+		  });
+
+	  // Both the actual nodes and the nodes on the links need to have a force in order to minimize collisions AND overlaps
+	  simulation.nodes(dataset.nodes);
+	  simulation.force('link', d3.forceLink(dataset.links));
+
+	//Create links as lines
+	var links = svg.selectAll('path')
+		.data(dataset.links)
+		.enter()
+		.append('path')
+		.attr('class', 'link')
+		.style('stroke', '#222222')  //THIS IS THE CONNECTION COLOR
+		.style('stroke-width', function(d){ return 2 }); //CONNECTION WIDTH
+
+	//Create nodes as circles
+	var nodes = svg.selectAll('circle')
+		.data(dataset.nodes)
+		.enter()
+		.append('circle')
+		.attr('r', nodeRadius)
+		.style('fill', function(d, i) {
+			return colors(dataset.nodes[i].category);
+		})
+		.call(d3.drag()  //Define what to do on drag events
+			.on('start', dragStarted)
+			.on('drag', dragging)
+			.on('end', dragEnded)
+		 );
+
+	//Every time the simulation 'ticks', this will be called
+	function ticked() {
+		nodes.attr('cx', function(d) { return d.x = Math.max(nodeRadius, Math.min(w - nodeRadius, d.x)); })
+			 .attr('cy', function(d) { return d.y = Math.max(nodeRadius, Math.min(h - nodeRadius, d.y)); });
+
+		links.attr('d', function(d){
+			return 'M ' + d.source.x + ',' + d.source.y +
+				   ' L ' + d.target.x + ',' + d.target.y;
+		});
+	};
+
+	// ================= Define drag event functions =================
+	function dragStarted(d) {
+		if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+		d.fx = d.x;
+		d.fy = d.y;
+	}
+
+	function dragging(d) {
+		d.fx = d3.event.x;
+		d.fy = d3.event.y;
+	}
+
+	function dragEnded(d) {
+		if (!d3.event.active) simulation.alphaTarget(0);
+		d.fx = d3.event.x;
+		d.fy = d3.event.y;
+	}
+
+// ===================== HELPER FUNCTIONS =====================
+	function getRandomInt(max) {
+	  let randNum = Math.random() * Math.floor(max);
+	  return randNum;
+	}
+
+	// ===================== PARTICLE TICK AND DRAW =====================
+
+	// ========= 
+	// The following two functions, tick() and drawParticlePathOnCanvas() are based on Micah Stub's code
+	// SOURCE: https://bl.ocks.org/micahstubbs/ed0ae1c70256849dab3e35a0241389c9
+	// =========
+
+	// First setup two unnested variables
+	// Start the particle timer, tick(), after a 1 second delay; the elapsed time will be automatically passed to the callback
+	var t = d3.timer(tick, 1000);
+
+	// Start with 0 particles; the populated array is contained within the tick function
+	let particles = [];
+	debugger;
+
+	// Tick function is for the particles
+	// d3.timer passes elapsed time as first argument
+	function tick(elapsed){
+	  // Filter the particle array from the previous tick()
+	  particles = particles.filter(d => d.current < d.path.getTotalLength());
+	  
+	  // Select all of the links and use its properties to create particle arrays for each
+	  d3.selectAll('path.link')
+		.each( function(d) { // DO NOT CONVERT TO ARROW FUNCTION, `this` will not bind, and you won't be able to access the SVG path properly
+
+			// the `x` limit controls the frequency per second
+			for (let x = 0; x < 2; x++) {
+			  const offset = (Math.random() * nodeRadius - nodeRadius/2);
+
+			  // The higher the multiplied Math.random(), the less particles (because the probability is lower that there will be a decimal smaller than the d.freq)
+			  if (Math.random() * 200 < d.freq) {
+
+				const length = this.getTotalLength();
+
+				// Update the particle array
+				particles.push({
+				  link: d,
+				  time: elapsed,
+				  offset,
+				  path: this,
+				  length,
+				  animateTime: length,
+				  speed: 0.5
+				});
+			  }
+			}
+		});
+
+	  // With updated particle array and elapsed time, draw those particles on the canvas
+	  drawParticlePathOnCanvas(elapsed);
+	}
+
+	function drawParticlePathOnCanvas(elapsed){
+          // Jon - most modifications are in this section and below
+
+	  // Set the canvas before drawing updated particles
+	  context.clearRect(0, 0, w, h);
+	  context.globalAlpha=0.5 // modified
+
+
+	  context.lineWidth = '50px';
+
+	  // For each particle `p` in particles find the current position and draw to the canvas
+	  for (const p in particles){
+		if( {}.hasOwnProperty.call(particles, p) ){
+		  const currentTime = elapsed - particles[p].time; 
+		  particles[p].current = currentTime * 0.15 * particles[p].speed; //modified - increase for faster particles
+		  debugger;
+
+		  // CAUTION: .getPointAtLength has been deprecated and does not work on Safari
+		  // MDN: https://developer.mozilla.org/en-US/docs/Web/API/SVGPathElement/getPointAtLength#Browser_compatibility
+		  // Possible Solution: https://github.com/rveciana/svg-path-properties
+		  const currentPos = particles[p].path.getPointAtLength(particles[p].current);
+
+		  // Draw the particles
+		  context.beginPath();
+		  context.arc( // creates a circle in canvas
+			currentPos.x + margin.left, // Add particles[p].offset for displacement
+			currentPos.y + margin.top,
+			particles[p].link.particleSize, // modified - radius of circle
+			0, // circle starting position
+			2 * Math.PI  // circle ending position
+		  );
+		  context.lineWidth = 1;
+		  context.stroke();
+		  context.fillStyle = colors(particles[p].link.source.category)  //modified - particle color
+
+		  context.fill();
+
+		}  
+	  }
+	}
+
+	// ========== Canvas Setup ==========
+	// Based on @MyNameIsKo's helper function ( https://stackoverflow.com/a/15666143/8585320 )
+	function createProperResCanvas(w, h, ratio) {
+		if (!ratio) { ratio = Math.round(window.devicePixelRatio) || 1 }
+
+		// Keep canvas within the allowable size:
+		// https://stackoverflow.com/a/11585939/8585320
+		h = Math.min(32767, h * ratio);
+
+		// Set canvas
+		var can = document.querySelector('#graph-canvas');
+		can.width = w * ratio;
+	    	can.height = h * ratio;
+		can.style.width = w + 'px';
+		can.style.height = h + 'px';
+
+		// Set context
+		var ctx = can.getContext('2d');
+		ctx.scale(ratio,ratio);
+		ctx.clearRect(0, 0, w, h);
+
+		// Since context does all of the drawing, no need to return canvas itself
+		return ctx;
+	}
+
+</script>
+</body>
+</html>
